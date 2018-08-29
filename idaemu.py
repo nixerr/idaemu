@@ -276,11 +276,16 @@ class Emu(object):
         for reg, value in self.regs:
             uc.reg_write(reg, value)
 
+    def _createUc(self):
+        self.curUC = Uc(self.arch, self.mode)
+
     def _emulate(self, startAddr, stopAddr, args=[], TimeOut=0, Count=0):
         try:
             self.logBuffer = []
-            uc = Uc(self.arch, self.mode)
-            self.curUC = uc
+            if self.curUC == None:
+                self._createUc()
+
+            uc = self.curUC
 
             self._initStackAndArgs(uc, stopAddr, args)
             self._initData(uc)
