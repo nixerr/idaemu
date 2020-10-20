@@ -5,7 +5,7 @@ from unicorn.arm_const import *
 from unicorn.arm64_const import *
 from struct import unpack, pack, unpack_from, calcsize
 from idaapi import get_func
-from idc import Qword, GetManyBytes, SelStart, SelEnd, here, ItemSize
+from idc import get_qword, get_bytes, read_selection_start, read_selection_end, here, get_item_size
 from idautils import XrefsTo
 
 PAGE_ALIGN = 0x1000  # 4k
@@ -80,7 +80,7 @@ class Emu(object):
                     i += 1
 
                 res = func(uc, self.logBuffer, args)
-                if type(res) not in (int,long): res = 0
+                if type(res) != int: res = 0
                 uc.reg_write(self.REG_RES, res)
                 uc.reg_write(self.REG_PC, RA)
                 if balance:
@@ -95,13 +95,13 @@ class Emu(object):
 
     def _getOriginData(self, address, size):
         res = []
-        for offset in xrange(0, size, 64):
-            tmp = GetManyBytes(address + offset, 64)
+        for offset in range(0, size, 64):
+            tmp = get_bytes(address + offset, 64)
             if tmp == None:
-                res.extend([pack("<Q", Qword(address + offset + i)) for i in range(0, 64, 8)])
+                res.extend([pack("<Q", get_qword(address + offset + i)) for i in range(0, 64, 8)])
             else:
                 res.append(tmp)
-        res = "".join(res)
+        res = b"".join(res)
         return res[:size]
 
     def _init(self):
@@ -184,82 +184,107 @@ class Emu(object):
     def _showRegs(self, uc):
         print(">>> regs:")
         try:
-            if self.mode == UC_MODE_16:
-                ax = uc.reg_read(UC_X86_REG_AX)
-                bx = uc.reg_read(UC_X86_REG_BX)
-                cx = uc.reg_read(UC_X86_REG_CX)
-                dx = uc.reg_read(UC_X86_REG_DX)
-                di = uc.reg_read(UC_X86_REG_SI)
-                si = uc.reg_read(UC_X86_REG_DI)
-                bp = uc.reg_read(UC_X86_REG_BP)
-                sp = uc.reg_read(UC_X86_REG_SP)
-                ip = uc.reg_read(UC_X86_REG_IP)
-                eflags = uc.reg_read(UC_X86_REG_EFLAGS)
+            if self.arch == UC_ARCH_X86:
+                if self.mode == UC_MODE_16:
+                    ax = uc.reg_read(UC_X86_REG_AX)
+                    bx = uc.reg_read(UC_X86_REG_BX)
+                    cx = uc.reg_read(UC_X86_REG_CX)
+                    dx = uc.reg_read(UC_X86_REG_DX)
+                    di = uc.reg_read(UC_X86_REG_SI)
+                    si = uc.reg_read(UC_X86_REG_DI)
+                    bp = uc.reg_read(UC_X86_REG_BP)
+                    sp = uc.reg_read(UC_X86_REG_SP)
+                    ip = uc.reg_read(UC_X86_REG_IP)
+                    eflags = uc.reg_read(UC_X86_REG_EFLAGS)
 
-                print("    AX = 0x%x BX = 0x%x CX = 0x%x DX = 0x%x" % (ax, bx, cx, dx))
-                print("    DI = 0x%x SI = 0x%x BP = 0x%x SP = 0x%x" % (di, si, bp, sp))
-                print("    IP = 0x%x" % ip)
-            elif self.mode == UC_MODE_32:
-                eax = uc.reg_read(UC_X86_REG_EAX)
-                ebx = uc.reg_read(UC_X86_REG_EBX)
-                ecx = uc.reg_read(UC_X86_REG_ECX)
-                edx = uc.reg_read(UC_X86_REG_EDX)
-                edi = uc.reg_read(UC_X86_REG_ESI)
-                esi = uc.reg_read(UC_X86_REG_EDI)
-                ebp = uc.reg_read(UC_X86_REG_EBP)
-                esp = uc.reg_read(UC_X86_REG_ESP)
-                eip = uc.reg_read(UC_X86_REG_EIP)
-                eflags = uc.reg_read(UC_X86_REG_EFLAGS)
+                    print("    AX = 0x%x BX = 0x%x CX = 0x%x DX = 0x%x" % (ax, bx, cx, dx))
+                    print("    DI = 0x%x SI = 0x%x BP = 0x%x SP = 0x%x" % (di, si, bp, sp))
+                    print("    IP = 0x%x" % ip)
+                elif self.mode == UC_MODE_32:
+                    eax = uc.reg_read(UC_X86_REG_EAX)
+                    ebx = uc.reg_read(UC_X86_REG_EBX)
+                    ecx = uc.reg_read(UC_X86_REG_ECX)
+                    edx = uc.reg_read(UC_X86_REG_EDX)
+                    edi = uc.reg_read(UC_X86_REG_ESI)
+                    esi = uc.reg_read(UC_X86_REG_EDI)
+                    ebp = uc.reg_read(UC_X86_REG_EBP)
+                    esp = uc.reg_read(UC_X86_REG_ESP)
+                    eip = uc.reg_read(UC_X86_REG_EIP)
+                    eflags = uc.reg_read(UC_X86_REG_EFLAGS)
 
-                print("    EAX = 0x%x EBX = 0x%x ECX = 0x%x EDX = 0x%x" % (eax, ebx, ecx, edx))
-                print("    EDI = 0x%x ESI = 0x%x EBP = 0x%x ESP = 0x%x" % (edi, esi, ebp, esp))
-                print("    EIP = 0x%x" % eip)
-            elif self.mode == UC_MODE_64:
-                rax = uc.reg_read(UC_X86_REG_RAX)
-                rbx = uc.reg_read(UC_X86_REG_RBX)
-                rcx = uc.reg_read(UC_X86_REG_RCX)
-                rdx = uc.reg_read(UC_X86_REG_RDX)
-                rdi = uc.reg_read(UC_X86_REG_RSI)
-                rsi = uc.reg_read(UC_X86_REG_RDI)
-                rbp = uc.reg_read(UC_X86_REG_RBP)
-                rsp = uc.reg_read(UC_X86_REG_RSP)
-                rip = uc.reg_read(UC_X86_REG_RIP)
-                r8 = uc.reg_read(UC_X86_REG_R8)
-                r9 = uc.reg_read(UC_X86_REG_R9)
-                r10 = uc.reg_read(UC_X86_REG_R10)
-                r11 = uc.reg_read(UC_X86_REG_R11)
-                r12 = uc.reg_read(UC_X86_REG_R12)
-                r13 = uc.reg_read(UC_X86_REG_R13)
-                r14 = uc.reg_read(UC_X86_REG_R14)
-                r15 = uc.reg_read(UC_X86_REG_R15)
-                eflags = uc.reg_read(UC_X86_REG_EFLAGS)
+                    print("    EAX = 0x%x EBX = 0x%x ECX = 0x%x EDX = 0x%x" % (eax, ebx, ecx, edx))
+                    print("    EDI = 0x%x ESI = 0x%x EBP = 0x%x ESP = 0x%x" % (edi, esi, ebp, esp))
+                    print("    EIP = 0x%x" % eip)
+                elif self.mode == UC_MODE_64:
+                    rax = uc.reg_read(UC_X86_REG_RAX)
+                    rbx = uc.reg_read(UC_X86_REG_RBX)
+                    rcx = uc.reg_read(UC_X86_REG_RCX)
+                    rdx = uc.reg_read(UC_X86_REG_RDX)
+                    rdi = uc.reg_read(UC_X86_REG_RSI)
+                    rsi = uc.reg_read(UC_X86_REG_RDI)
+                    rbp = uc.reg_read(UC_X86_REG_RBP)
+                    rsp = uc.reg_read(UC_X86_REG_RSP)
+                    rip = uc.reg_read(UC_X86_REG_RIP)
+                    r8 = uc.reg_read(UC_X86_REG_R8)
+                    r9 = uc.reg_read(UC_X86_REG_R9)
+                    r10 = uc.reg_read(UC_X86_REG_R10)
+                    r11 = uc.reg_read(UC_X86_REG_R11)
+                    r12 = uc.reg_read(UC_X86_REG_R12)
+                    r13 = uc.reg_read(UC_X86_REG_R13)
+                    r14 = uc.reg_read(UC_X86_REG_R14)
+                    r15 = uc.reg_read(UC_X86_REG_R15)
+                    eflags = uc.reg_read(UC_X86_REG_EFLAGS)
 
-                print("    RAX = 0x%x RBX = 0x%x RCX = 0x%x RDX = 0x%x" % (rax, rbx, rcx, rdx))
-                print("    RDI = 0x%x RSI = 0x%x RBP = 0x%x RSP = 0x%x" % (rdi, rsi, rbp, rsp))
-                print("    R8 = 0x%x R9 = 0x%x R10 = 0x%x R11 = 0x%x R12 = 0x%x " \
-                      "R13 = 0x%x R14 = 0x%x R15 = 0x%x" % (r8, r9, r10, r11, r12, r13, r14, r15))
-                print("    RIP = 0x%x" % rip)
-            if eflags:
-                print("    EFLAGS:")
-                print("    CF=%d PF=%d AF=%d ZF=%d SF=%d TF=%d IF=%d DF=%d OF=%d IOPL=%d " \
-                      "NT=%d RF=%d VM=%d AC=%d VIF=%d VIP=%d ID=%d"
-                      % (self._getBit(eflags, 0),
-                         self._getBit(eflags, 2),
-                         self._getBit(eflags, 4),
-                         self._getBit(eflags, 6),
-                         self._getBit(eflags, 7),
-                         self._getBit(eflags, 8),
-                         self._getBit(eflags, 9),
-                         self._getBit(eflags, 10),
-                         self._getBit(eflags, 11),
-                         self._getBit(eflags, 12) + self._getBit(eflags, 13) * 2,
-                         self._getBit(eflags, 14),
-                         self._getBit(eflags, 16),
-                         self._getBit(eflags, 17),
-                         self._getBit(eflags, 18),
-                         self._getBit(eflags, 19),
-                         self._getBit(eflags, 20),
-                         self._getBit(eflags, 21)))
+                    print("    RAX = 0x%x RBX = 0x%x RCX = 0x%x RDX = 0x%x" % (rax, rbx, rcx, rdx))
+                    print("    RDI = 0x%x RSI = 0x%x RBP = 0x%x RSP = 0x%x" % (rdi, rsi, rbp, rsp))
+                    print("    R8 = 0x%x R9 = 0x%x R10 = 0x%x R11 = 0x%x R12 = 0x%x " \
+                          "R13 = 0x%x R14 = 0x%x R15 = 0x%x" % (r8, r9, r10, r11, r12, r13, r14, r15))
+                    print("    RIP = 0x%x" % rip)
+                if eflags:
+                    print("    EFLAGS:")
+                    print("    CF=%d PF=%d AF=%d ZF=%d SF=%d TF=%d IF=%d DF=%d OF=%d IOPL=%d " \
+                          "NT=%d RF=%d VM=%d AC=%d VIF=%d VIP=%d ID=%d"
+                          % (self._getBit(eflags, 0),
+                             self._getBit(eflags, 2),
+                             self._getBit(eflags, 4),
+                             self._getBit(eflags, 6),
+                             self._getBit(eflags, 7),
+                             self._getBit(eflags, 8),
+                             self._getBit(eflags, 9),
+                             self._getBit(eflags, 10),
+                             self._getBit(eflags, 11),
+                             self._getBit(eflags, 12) + self._getBit(eflags, 13) * 2,
+                             self._getBit(eflags, 14),
+                             self._getBit(eflags, 16),
+                             self._getBit(eflags, 17),
+                             self._getBit(eflags, 18),
+                             self._getBit(eflags, 19),
+                             self._getBit(eflags, 20),
+                             self._getBit(eflags, 21)))
+            elif self.arch == UC_ARCH_ARM:
+                R0 = uc.reg_read(UC_ARM_REG_R0)
+                R1 = uc.reg_read(UC_ARM_REG_R1)
+                R2 = uc.reg_read(UC_ARM_REG_R2)
+                R3 = uc.reg_read(UC_ARM_REG_R3)
+                R4 = uc.reg_read(UC_ARM_REG_R4)
+                R5 = uc.reg_read(UC_ARM_REG_R5)
+                R6 = uc.reg_read(UC_ARM_REG_R6)
+                R7 = uc.reg_read(UC_ARM_REG_R7)
+                R8 = uc.reg_read(UC_ARM_REG_R8)
+                R9 = uc.reg_read(UC_ARM_REG_R9)
+                R10 = uc.reg_read(UC_ARM_REG_R10)
+                R11 = uc.reg_read(UC_ARM_REG_R11)
+                R12 = uc.reg_read(UC_ARM_REG_R12)
+                SP = uc.reg_read(UC_ARM_REG_SP) # R13
+                PC = uc.reg_read(UC_ARM_REG_PC)
+                LR = uc.reg_read(UC_ARM_REG_LR)
+                print("    R0 = 0x%x, R1 = 0x%x, R2 = 0x%x" % (R0, R1, R2))
+                print("    R3 = 0x%x, R4 = 0x%x, R5 = 0x%x" % (R3, R4, R5))
+                print("    R6 = 0x%x, R7 = 0x%x, R8 = 0x%x" % (R6, R7, R8))
+                print("    R9 = 0x%x, R10 = 0x%x, R11 = 0x%x" % (R9, R10, R11))
+                print("    R12 = 0x%x" % R12)
+                print("    SP = 0x%x" % SP)
+                print("    PC = 0x%x, LR = 0x%x" % (PC, LR))
         except UcError as e:
             print("#ERROR: %s" % e)
 
@@ -369,7 +394,7 @@ class Emu(object):
         if retAddr == None:
             refs = [ref.frm for ref in XrefsTo(func.startEA, 0)]
             if len(refs) != 0:
-                retAddr = refs[0] + ItemSize(refs[0])
+                retAddr = refs[0] + get_item_size(refs[0])
             else:
                 print("Please offer the return address.")
                 return
@@ -378,8 +403,8 @@ class Emu(object):
         return res
 
     def eBlock(self, codeStart=None, codeEnd=None):
-        if codeStart == None: codeStart = SelStart()
-        if codeEnd == None: codeEnd = SelEnd()
+        if codeStart == None: codeStart = read_selection_start()
+        if codeEnd == None: codeEnd = read_selection_end()
         self._emulate(codeStart, codeEnd)
         self._showRegs(self.curUC)
 
